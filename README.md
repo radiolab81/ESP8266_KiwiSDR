@@ -1,4 +1,4 @@
-# KiwiSDR-Audioclient für den **ESP8266** (PDM-Ausgang über I2S)
+# KiwiSDR-Client für den **ESP8266** (PDM-Ausgang über I2S)
 
 Eigenständige Portierung des KiwiSDR-Clients (ESP32-Version) auf den ESP8266.
 Der Chip hat **keinen DAC**; das Audio wird deshalb als **1-Bit-Dichtestrom (Delta-Sigma / PDM)**
