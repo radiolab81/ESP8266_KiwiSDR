@@ -1,0 +1,9 @@
+# Vorgaben fuer den ESP8266 (werden von "make defconfig" / beim ersten menuconfig geladen).
+# Nicht jedes Symbol existiert in jeder SDK-Version; unbekannte Zeilen sind harmlos.
+#
+# Feinere Zeitaufloesung fuer Zeitlimits und Keepalive (Standard: 100 Hz = 10 ms)
+CONFIG_FREERTOS_HZ=1000
+#
+# Optional (mehr Rechenreserve fuer 64-Bit-PDM + WLAN): CPU auf 160 MHz.
+# Erst aktivieren, wenn der Status "Ring ueber/unter" Probleme zeigt:
+# CONFIG_ESP8266_DEFAULT_CPU_FREQ_160=y

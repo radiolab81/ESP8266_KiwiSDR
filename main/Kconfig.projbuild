@@ -1,0 +1,141 @@
+menu "KiwiSDR Client (ESP8266)"
+
+    config KIWI_WIFI_SSID
+        string "WLAN SSID"
+        default "meine-ssid"
+
+    config KIWI_WIFI_PASSWORD
+        string "WLAN Passwort (leer = offenes WLAN)"
+        default ""
+
+    config KIWI_HOST
+        string "KiwiSDR Hostname / IPv4"
+        default "kiwisdr.adresse.org"
+
+    config KIWI_PORT
+        int "KiwiSDR Port"
+        default 8073
+        range 1 65535
+
+    config KIWI_PASSWORD
+        string "KiwiSDR Passwort (leer = oeffentlich)"
+        default ""
+
+    config KIWI_USER_NAME
+        string "Anzeigename in der Kiwi-Nutzerliste (nur A-Z a-z 0-9 _ -)"
+        default "esp8266"
+
+    config KIWI_FREQ_KHZ
+        string "Startfrequenz in kHz (z. B. 225 oder 7055.5)"
+        default "225"
+
+    config KIWI_MODE
+        string "Demodulation (am amn amw sam usb lsb cw nbfm ...)"
+        default "am"
+
+    config KIWI_ADPCM
+        bool "ADPCM-Kompression anfordern (spart WLAN-Bandbreite)"
+        default n
+        help
+          ACHTUNG ESP8266: Ein ADPCM-Frame enthaelt 2048 Samples (ca. 170 ms) und trifft
+          als Block ein. Dafuer sollte "Jitterpuffer" mindestens 600 ms betragen
+          (ca. 16 KB RAM). Mit rohem PCM (Standard) kommen Frames alle 43 ms.
+
+    config KIWI_STATUS_LOG
+        bool "Status alle 10 s ueber die serielle Schnittstelle loggen"
+        default n
+        help
+          Zeigt Frames, verlorene Frames, Puffer-Ueber-/Unterlaeufe, Taktkorrekturen und
+          den freien Heap. Die serielle Ausgabe (TX) ist unabhaengig von der Audiopin-
+          Belegung (RX) und stoert deshalb nicht.
+
+    config KIWI_PDM_GAIN
+        int "Software-Verstaerkung vor dem PDM-Ausgang (1..8)"
+        default 2
+        range 1 8
+        help
+          Kiwi-Audio ist AGC-geregelt, aber oft leiser als Vollaussteuerung.
+          Zu hohe Werte uebersteuern (Verzerrung).
+
+    config KIWI_PDM_BUFFER_MS
+        int "Jitterpuffer in Millisekunden (RAM: 24 Byte je ms)"
+        default 300
+        range 100 1000
+        help
+          Der ESP8266 hat nur ca. 50 KB freien Heap. Der Puffer wird auf eine Zweierpotenz
+          aufgerundet (300 ms -> 4096 Samples = 8 KB).
+
+    choice KIWI_PDM_OSR_CHOICE
+        prompt "PDM-Bits je Audio-Sample"
+        default KIWI_PDM_OSR_64
+        help
+          64 Bit: 1,536 Mbit/s, bessere Qualitaet (gemessen 53 dB im Nutzband), ca. 15-20 %
+          CPU bei 80 MHz. 32 Bit: halber Rechenaufwand, ca. 7 dB mehr Rauschen.
+
+        config KIWI_PDM_OSR_64
+            bool "64"
+        config KIWI_PDM_OSR_32
+            bool "32"
+    endchoice
+
+    config KIWI_PDM_SWAP_WORDS
+        bool "Je zwei 16-Bit-Woerter vertauschen"
+        default n
+        help
+          Der I2S-Block sendet je Frame zwei 16-Bit-Woerter (links, rechts). Ob die
+          Speicherreihenfolge der Sendereihenfolge entspricht, haengt vom Treiber ab. Bei
+          falscher Reihenfolge vertauschen sich nur benachbarte 16-Bit-Bloecke des
+          Bitstroms: das Audio bleibt hoerbar, wird aber etwas rauschiger. Probieren Sie
+          mit dem Hoertest (KIWI_PDM_SELFTEST) beide Einstellungen und behalten Sie die
+          mit dem saubereren Ton.
+
+    config KIWI_PDM_BCK_WS_PINS
+        bool "I2S-Takt auch auf GPIO15 (BCK) und GPIO2 (WS) ausgeben"
+        default n
+        help
+          Nicht noetig fuer den Audioausgang. Ausgeschaltet bleiben beide Pins frei.
+
+    config KIWI_PDM_DMA_COUNT
+        int "I2S-DMA: Anzahl Puffer"
+        default 6
+        range 2 12
+
+    config KIWI_PDM_DMA_LEN
+        int "I2S-DMA: Laenge je Puffer"
+        default 256
+        range 64 1024
+        help
+          Die Einheit (Bytes oder Samples) legt der SDK-Treiber fest. Bei Knacken durch
+          Unterlaeufe (Log: "Ring ueber/unter") Anzahl oder Laenge erhoehen.
+
+    config KIWI_PDM_SELFTEST
+        bool "Hoertest nach dem WLAN-Start: 1-kHz-Ton fuer 5 Sekunden"
+        default n
+        help
+          Spielt einmal nach dem WLAN-Start einen Testton und meldet danach, ob der I2S-Treiber
+          Daten abgenommen hat. Zum Pruefen von Schaltung und Pegel. (Vor dem WLAN-Start nahm der
+          I2S-DMA am Testgeraet keine Daten ab, deshalb laeuft der Test erst danach.)
+
+    config KIWI_DEBUG
+        bool "Protokoll-Debugausgabe (alle MSG-Parameter, Kommandos, Steuerframes, mit Zeitstempel)"
+        default n
+        help
+          Zeigt jede Server-Nachricht (Name=Wert, auf 60 Zeichen gekuerzt), jedes gesendete
+          Kommando, WebSocket-Ping/Close und verworfene grosse Nachrichten, jeweils mit
+          Zeitstempel in ms. Zur Fehlersuche, z. B. wenn der Kiwi die Sitzung beendet.
+
+    config KIWI_NET_CONSOLE
+        bool "Konsole ueber TCP (f/m/s/q), statt serieller Eingabe"
+        default y
+        help
+          Der Audioausgang liegt auf GPIO3 (RX0), die serielle Eingabe ist deshalb nicht
+          nutzbar. ACHTUNG: Die Konsole hat KEINE Anmeldung - jeder im WLAN kann Frequenz
+          und Modus aendern. Abschalten, wenn das nicht gewuenscht ist.
+
+    config KIWI_NET_CONSOLE_PORT
+        int "TCP-Port der Konsole"
+        default 2323
+        range 1 65535
+        depends on KIWI_NET_CONSOLE
+
+endmenu
