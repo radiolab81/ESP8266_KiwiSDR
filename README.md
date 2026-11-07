@@ -42,6 +42,7 @@ geändert wurde nur, was der ESP8266 zwingend verlangt (siehe Abschnitt 3).
   weil man ihn nur zum Lesen der Logs (TX) braucht; beim Flashen den Audioausgang kurz abklemmen.
 * Beim Booten liegen GPIO15 (LOW) und GPIO2 (HIGH) fest; sie werden **nicht** benutzt (I2S-Takt aus).
 
+![pinnodemcu](/images/NodeMCU.jpg)
 ---
 
 ## 3  Was gegenüber der ESP32-Version geändert wurde
