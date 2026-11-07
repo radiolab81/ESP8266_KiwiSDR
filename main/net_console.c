@@ -18,6 +18,23 @@ static const char *TAG = "net_console";
 
 static net_console_handler_t s_handler;
 static uint16_t s_port;
+static volatile int s_fd = -1;        /* aktuelle Verbindung (-1 = keine); fuer net_console_write() */
+
+/* Text an den verbundenen Client; "\n" wird zu "\r\n" (Telnet). Auch aus anderen Tasks
+ * (Update-Task) aufrufbar. Ohne Verbindung: nichts (die Ausgabe geht dann nur ans UART-Log). */
+void net_console_write(const char *s)
+{
+    int fd = s_fd;
+    if (fd < 0 || !s) return;
+    while (*s) {
+        const char *nl = strchr(s, '\n');
+        size_t n = nl ? (size_t)(nl - s) : strlen(s);
+        if (n) lwip_send(fd, s, n, 0);
+        if (!nl) break;
+        lwip_send(fd, "\r\n", 2, 0);
+        s = nl + 1;
+    }
+}
 
 static void send_str(int fd, const char *s)
 {
@@ -27,15 +44,16 @@ static void send_str(int fd, const char *s)
 /** Bedient eine Verbindung bis sie endet. */
 static void serve(int fd)
 {
-    char line[48];
+    char line[80];                            /* "d go host:port" braucht mehr als 48 Zeichen */
     size_t n = 0;
     int iac_skip = 0;                         /* Telnet-Aushandlung (0xFF + 2 Bytes) ueberlesen */
     uint8_t buf[32];
 
-    send_str(fd, "KiwiSDR-Client Konsole: f <kHz> | m <modus> | s | q\r\n> ");
+    s_fd = fd;
+    send_str(fd, "KiwiSDR-Client Konsole: f <kHz> | m <modus> | s | q | d (Serververzeichnis)\r\n> ");
     for (;;) {
         int r = lwip_recv(fd, buf, sizeof buf, 0);
-        if (r <= 0) return;                   /* Gegenseite hat geschlossen oder Fehler */
+        if (r <= 0) { s_fd = -1; return; }                   /* Gegenseite hat geschlossen oder Fehler */
 
         for (int i = 0; i < r; i++) {
             uint8_t c = buf[i];
@@ -48,7 +66,7 @@ static void serve(int fd)
                     line[n] = '\0';
                     reply[0] = '\0';
                     s_handler(line, reply, sizeof reply);
-                    send_str(fd, reply);
+                    if (reply[0]) send_str(fd, reply);
                     n = 0;
                 }
                 send_str(fd, "\r\n> ");
@@ -95,5 +113,5 @@ int net_console_start(uint16_t port, net_console_handler_t handler)
 {
     s_handler = handler;
     s_port = port;
-    return xTaskCreate(console_task, "console", 3072, NULL, 3, NULL) == pdPASS ? 0 : -1;
+    return xTaskCreate(console_task, "console", 4096, NULL, 3, NULL) == pdPASS ? 0 : -1;
 }

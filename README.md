@@ -240,9 +240,61 @@ kiwi-esp8266/
 ├── main/                        nur ESP8266
 │   ├── app_main.c   WLAN, Kiwi-Task, Start          sink_pdm.c/.h   I2S-Bitstrom-Ausgabe + Taktkorrektur
 │   ├── net_console.c/.h  TCP-Konsole                Kconfig.projbuild  alle Einstellungen
+│   └── app_dir.c/.h  dir_store_flash.c/.h   Serververzeichnis: Update-Task, NVS, Wechsel, Flash-Store
+├── partitions.csv               Partitionstabelle mit "kiwidb" (Serververzeichnis, 2 x 192 KB)
+├── components/kiwi_dir/         portabler Verzeichnisdienst (DB, Parser, HTTP, Laenderzuordnung, "d"-Befehle)
 └── pc/                          Tests und PC-Client (laufen ohne ESP8266)
     ├── test_core.c  test_pdm.c  sim_sink_pdm.c  e2e_test.py  mock_kiwi.py  main_pc.c  sink_wav.c  Makefile
+    ├── test_dir.c  e2e_dir_test.py  kiwi_dirtool.c  store_file.c/.h  testdata/   (Verzeichnisdienst)
     └── sim/                     Ersatz-Header (FreeRTOS, I2S) für die Simulation von main/sink_pdm.c
 ```
+
+
+---
+
+## 8  Serververzeichnis: Liste laden, nach Land filtern, Server wechseln
+
+Identisch zur ESP32-Version (gleiche Quellen in `components/kiwi_dir`), angepasst an den ESP8266.
+Die Liste `http://rx.linkfanel.net/kiwisdr_com.js` (ca. 0,9 MB, ~840 Server) wird beim Empfang
+zerlegt und als kompakte Datenbank (120 Byte/Server) in der Flash-Partition `kiwidb` abgelegt
+(zwei Slots A/B: ein abgebrochenes Update zerstört nie die alte Liste). Fehlt beim Eintrag der Port, gilt **8073**.
+
+### Bedienung (TCP-Konsole: `nc <ip> 2323`)
+
+| Befehl | Wirkung |
+|---|---|
+| `d` | Hilfe |
+| `d update` | Liste laden und Datenbank erneuern (`d update force` ignoriert den Mindestabstand) |
+| `d info`, `d countries` | Stand der Datenbank, Länder mit Serverzahl |
+| `d filter <Land>` / `d free` / `d snr <dB>` / `d freq <kHz>` | Filter setzen (kombinierbar) |
+| `d list` | Treffer anzeigen |
+| `d go <Nr>`, `d go best`, `d go host[:port]` | Server wechseln (Sitzung wird neu aufgebaut, Wahl bleibt nach Neustart in NVS) |
+
+Beispiel: `d update` → `d filter Switzerland` → `d list` → `d go 142`.
+Meldet der gewählte Server „busy/down/Passwort“ und es kam kein Audio, wählt der Client automatisch den
+nächsten Treffer des Filters mit freiem Kanal (`KIWI_DIR_FAILOVER`, Menü „Serververzeichnis“).
+
+### Was auf dem ESP8266 anders ist (gegenüber ESP32)
+
+| Thema | ESP8266-Lösung |
+|---|---|
+| Atomics | keine C11-Atomics (L106): `kiwi_flag` der Portschicht bzw. `volatile int` |
+| RAM (~50 KB Heap) | Update-Kontext ca. 3,7 KB (statt 9 KB) auf dem Heap nur während des Updates; Parser-Felder 128 statt 240 Byte, Länder-Tabelle 96 statt 255 Einträge (`KIWI_DIR_VAL_W`, `KIWI_DIR_WRITER_COUNTRIES` in `component.mk`) |
+| **Audio pausiert beim Update** | `d update` beendet die laufende Sitzung (gibt ihren Speicher frei), lädt die Liste (ca. 10–40 s) und verbindet danach automatisch neu. Das ist Absicht: parallel reicht der RAM nicht. |
+| Flash-Zugriff | SPI-Flash des ESP8266 will 4-Byte-Ausrichtung; `dir_store_flash.c` nutzt einen 64-Byte-Zwischenpuffer für unausgerichtete Zugriffe |
+| Konsolenausgabe | `net_console_write()` schickt mehrzeilige Ausgabe direkt an den TCP-Client (der 200-Byte-Antwortpuffer wäre zu klein); Zeilenpuffer 80 statt 48 Byte |
+| Flash-Größe | `partitions.csv` braucht ≥ 2 MB (Ende 0x170000), gesetzt in `sdkconfig.defaults` |
+
+### Einbauen / Aktualisieren eines vorhandenen Projekts
+
+`sdkconfig.defaults` greift nur bei **neuem** `sdkconfig`: `rm sdkconfig` (oder in `make menuconfig`:
+Partition Table → Custom, Dateiname `partitions.csv`, Flash size 2 MB), dann `make flash`.
+Die Partitionstabelle wird mit dem Flashen neu geschrieben; WLAN-/NVS-Daten bleiben dabei nicht erhalten.
+
+### Tests am PC
+
+`cd pc && make test` – enthält zusätzlich `test_dir` (auch mit dem kleinen ESP8266-Profil als `test_dir_small`)
+und `e2e_dir_test.py` (lokaler HTTP-Mock: Redirect, chunked, Fehlerseiten, Kapazität).
+Beispiel: `./kiwi_dirtool -d kiwidb.bin -f testdata/kiwisdr_sample.js "d update" "d filter Germany" "d list"`.
 
 

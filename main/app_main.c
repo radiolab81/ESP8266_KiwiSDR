@@ -36,6 +36,8 @@
 
 #include "kiwi_client.h"
 #include "net_console.h"
+#include "app_dir.h"
+#include "kiwi_dir_db.h"   /* KIWI_DIR_HOST_LEN */
 #include "sink_pdm.h"
 
 static const char *TAG = "kiwi_app";
@@ -142,10 +144,18 @@ static void kiwi_task(void *arg)
     }
 
     uint32_t backoff_ms = 5000;
+    int failovers = 0;                              /* Ersatzserver-Wechsel in Folge */
+    static char     host[KIWI_DIR_HOST_LEN];        /* aktueller Server (statisch: schont den Stack) */
+    uint16_t        port;
+    app_dir_server_initial(host, sizeof host, &port);   /* zuletzt gewaehlter Server oder Kconfig */
 
     for (;;) {
         /* Erst weitermachen, wenn das WLAN eine IP hat. */
         xEventGroupWaitBits(g_wifi_events, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+
+        /* Falls gerade ein Verzeichnis-Update laeuft (Konsole schon vor der ersten Sitzung): abwarten. */
+        while (app_dir_hold()) { app_dir_set_idle(1); vTaskDelay(100 / portTICK_PERIOD_MS); }
+        app_dir_set_idle(0);
 
 #ifdef CONFIG_KIWI_PDM_SELFTEST
         /* Hoertest: 1-kHz-Ton fuer 5 s, EINMAL, nach dem WLAN-Start. BEOBACHTUNG am Testgeraet: Vor dem
@@ -160,8 +170,8 @@ static void kiwi_task(void *arg)
 #endif
 
         kiwi_config_t cfg = {
-            .host = CONFIG_KIWI_HOST,
-            .port = CONFIG_KIWI_PORT,
+            .host = host,
+            .port = port,
             .password = CONFIG_KIWI_PASSWORD,
             .user_name = CONFIG_KIWI_USER_NAME,
             .freq_hz = freq_hz,
@@ -174,14 +184,15 @@ static void kiwi_task(void *arg)
         uint32_t t_session = kiwi_time_ms();
         kiwi_err_t rc = kiwi_client_init(&g_client, &cfg);
         if (rc == KIWI_OK) {
-            ESP_LOGI(TAG, "Verbinde %s:%d, %s kHz, Modus %s", CONFIG_KIWI_HOST,
-                     CONFIG_KIWI_PORT, CONFIG_KIWI_FREQ_KHZ, mode);
+            ESP_LOGI(TAG, "Verbinde %s:%u, Modus %s", host, (unsigned)port, mode);
             rc = kiwi_client_connect(&g_client);
         }
         if (rc == KIWI_OK) {
             backoff_ms = 5000;                      /* Verbindung steht -> Wartezeit zuruecksetzen */
             g_active = 1;                           /* ab hier darf die Konsole umstimmen */
-            while (!g_quit_session && (rc = kiwi_client_poll(&g_client, 200)) == KIWI_OK) {
+            /* app_dir_switch_pending(): "d go ..." -> Sitzung beenden; app_dir_hold(): Update laeuft. */
+            while (!g_quit_session && !app_dir_switch_pending() && !app_dir_hold() &&
+                   (rc = kiwi_client_poll(&g_client, 200)) == KIWI_OK) {
 #ifdef CONFIG_KIWI_STATUS_LOG
                 static uint32_t t_log;
                 uint32_t now = kiwi_time_ms();
@@ -211,9 +222,63 @@ static void kiwi_task(void *arg)
                  (unsigned)g_client.st.keepalives, (unsigned)g_client.st.ws_pings,
                  (unsigned)g_client.st.dropped_msgs);
         kiwi_client_close(&g_client);              /* IMMER sauber schliessen */
+        app_dir_set_idle(1);                       /* Speicher der Sitzung ist frei (Update darf starten) */
+
+        /* ---- Verzeichnis-Update laeuft: Audio pausiert, damit der RAM fuers Herunterladen reicht ---- */
+        if (app_dir_hold()) {
+            while (app_dir_hold()) vTaskDelay(100 / portTICK_PERIOD_MS);
+            app_dir_set_idle(0);
+            backoff_ms = 5000;
+            continue;                              /* danach sofort wieder verbinden */
+        }
+
+        /* ---- Serverwechsel (Benutzer) ---- */
+        if (app_dir_take_switch(host, sizeof host, &port)) {
+            ESP_LOGI(TAG, "Wechsel zu %s:%u", host, (unsigned)port);
+            failovers = 0;
+            backoff_ms = 5000;
+            app_dir_set_idle(0);
+            continue;                              /* sofort verbinden, keine Wartezeit */
+        }
+
+#ifdef CONFIG_KIWI_DIR_FAILOVER
+        /* ---- Ausweichen auf anderen Server aus der Datenbank ----
+         * Nur wenn der Server uns gar nicht erst Audio geliefert hat und der Fehler zu
+         * "dieser Server geht gerade nicht" passt. */
+        if (!g_quit_session && g_client.st.frames == 0 && failovers < CONFIG_KIWI_DIR_FAILOVER_MAX &&
+            (xEventGroupGetBits(g_wifi_events) & WIFI_CONNECTED_BIT) &&      /* WLAN-Ausfall ist kein Kiwi-Problem */
+            (rc == KIWI_ERR_BUSY || rc == KIWI_ERR_DOWN || rc == KIWI_ERR_PASSWORD || rc == KIWI_ERR_HANDSHAKE ||
+             rc == KIWI_ERR_REDIRECT || rc == KIWI_ERR_TIMEOUT || rc == KIWI_ERR_NET || rc == KIWI_ERR_PROTO ||
+             rc == KIWI_ERR_CLOSED)) {
+            char nh[KIWI_DIR_HOST_LEN];
+            uint16_t np;
+            if (app_dir_failover(host, port, nh, sizeof nh, &np)) {
+                snprintf(host, sizeof host, "%s", nh);
+                port = np;
+                failovers++;
+                ESP_LOGW(TAG, "Ersatzserver %s:%u (%d/%d)", host, (unsigned)port, failovers,
+                         CONFIG_KIWI_DIR_FAILOVER_MAX);
+                vTaskDelay(2000 / portTICK_PERIOD_MS);   /* kurze Pause, den naechsten Kiwi nicht bedraengen */
+                app_dir_set_idle(0);
+                continue;
+            }
+        }
+#endif
+        if (g_client.st.frames > 0) failovers = 0;  /* es lief Audio -> Zaehler zuruecksetzen */
 
         ESP_LOGI(TAG, "Neuer Versuch in %u s", (unsigned)(backoff_ms / 1000));
-        vTaskDelay(backoff_ms / portTICK_PERIOD_MS);
+        /* In 100-ms-Schritten warten, damit ein "d go" oder ein Update die Pause sofort beendet. */
+        for (uint32_t w = 0; w < backoff_ms && !app_dir_switch_pending() && !app_dir_hold(); w += 100)
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+        if (app_dir_hold()) continue;               /* Schleife oben wartet das Update ab */
+        if (app_dir_take_switch(host, sizeof host, &port)) {   /* Wunsch kam waehrend der Pause */
+            ESP_LOGI(TAG, "Wechsel zu %s:%u", host, (unsigned)port);
+            failovers = 0;
+            backoff_ms = 5000;
+            app_dir_set_idle(0);
+            continue;
+        }
+        app_dir_set_idle(0);
         backoff_ms = backoff_ms >= 60000 ? 60000 : backoff_ms * 2;
     }
 }
@@ -225,6 +290,8 @@ static void kiwi_task(void *arg)
 #ifdef CONFIG_KIWI_NET_CONSOLE
 static int console_handler(const char *line, char *reply, size_t cap)
 {
+    /* Verzeichnisbefehle ("d ...") funktionieren auch ohne Kiwi-Verbindung. */
+    if (app_dir_command(line)) { reply[0] = '\0'; return 0; }   /* Ausgabe ging direkt an die Konsole */
     if (!g_active) {
         snprintf(reply, cap, "nicht verbunden");
         return -1;
@@ -248,6 +315,7 @@ void app_main(void)
     ESP_ERROR_CHECK(e);
 
     ESP_LOGI(TAG, "Freier Heap beim Start: %u Byte", (unsigned)esp_get_free_heap_size());
+    app_dir_init();                               /* Serverdatenbank aus dem Flash oeffnen (leer ist ok) */
     wifi_start();
     xTaskCreate(kiwi_task, "kiwi_net", 4096, NULL, 5, NULL);
 #ifdef CONFIG_KIWI_NET_CONSOLE

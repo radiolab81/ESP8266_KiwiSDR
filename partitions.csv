@@ -1,0 +1,8 @@
+# Name,   Type, SubType, Offset,   Size,     Flags
+# Wie partitions_singleapp.csv des SDK, plus "kiwidb" (Serververzeichnis, 2 Slots zu 192 KB).
+# Benoetigt mindestens 2 MB Flash (Ende = 0x170000). Offsets von phy_init/factory NICHT aendern
+# (sonst Kconfig des SDK anpassen).
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0xF0000,
+kiwidb,   data, 0x40,    0x110000, 0x60000,

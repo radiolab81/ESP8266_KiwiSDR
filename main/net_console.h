@@ -29,6 +29,13 @@ typedef int (*net_console_handler_t)(const char *line, char *reply, size_t reply
 /** Startet den Konsolen-Task (lauscht auf @p port, eine Verbindung gleichzeitig). 0 = ok. */
 int net_console_start(uint16_t port, net_console_handler_t handler);
 
+/**
+ * Schreibt Text direkt an den verbundenen Client (mehrzeilig moeglich, "\n" -> "\r\n").
+ * Fuer Befehle mit langer Ausgabe (Serverliste): der 200-Byte-Antwortpuffer waere zu klein.
+ * Ohne Verbindung passiert nichts.
+ */
+void net_console_write(const char *s);
+
 #ifdef __cplusplus
 }
 #endif

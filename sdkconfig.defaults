@@ -7,3 +7,7 @@ CONFIG_FREERTOS_HZ=1000
 # Optional (mehr Rechenreserve fuer 64-Bit-PDM + WLAN): CPU auf 160 MHz.
 # Erst aktivieren, wenn der Status "Ring ueber/unter" Probleme zeigt:
 # CONFIG_ESP8266_DEFAULT_CPU_FREQ_160=y
+# Serververzeichnis: eigene Partitionstabelle mit Datenbank-Partition "kiwidb" (siehe partitions.csv)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y
