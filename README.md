@@ -1,6 +1,6 @@
 # KiwiSDR-Client für den **ESP8266** (PDM-Ausgang über I2S)
 
-Eigenständige Portierung des KiwiSDR-Clients (ESP32-Version) auf den ESP8266.
+Eigenständige Portierung des KiwiSDR-Clients (ESP32-Version: https://github.com/radiolab81/ESP32_KiwiSDR) auf den ESP8266.
 Der Chip hat **keinen DAC**; das Audio wird deshalb als **1-Bit-Dichtestrom (Delta-Sigma / PDM)**
 über den I2S-Block ausgegeben und mit einem RC-Glied am Pin zu Analogsignal geglättet.
 Der Protokoll-Kern (WebSocket, KiwiSDR-Protokoll, ADPCM) ist **derselbe Quellcode** wie bei ESP32 und PC;
