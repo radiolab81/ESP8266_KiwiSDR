@@ -91,10 +91,14 @@ nc 192.168.1.50 2323       # IP steht im Log ("sta ip: ...")
 
 ## 5  Inbetriebnahme und Feineinstellung
 
+
+![mc1](/images/menuconfig1.png)
+![mc2](/images/menuconfig2.png)
+
+
 1. **Hörtest ohne Netzwerk:** `menuconfig` → „Hörtest beim Start“ einschalten. Der Chip spielt vor dem WLAN 5 s einen
    1-kHz-Ton. Zu hören sein muss ein **sauberer Sinuston**. Rauschen/Kratzen → Schaltung prüfen.
-2. **Bitreihenfolge (`KIWI_PDM_SWAP_WORDS`):** Der I2S-Block sendet pro Frame zwei 16-Bit-Wörter. Ob die Speicherreihenfolge
-   der Sendereihenfolge entspricht, weiß ich ohne Hardware nicht. Eine falsche Einstellung vertauscht nur benachbarte
+2. **Bitreihenfolge (`KIWI_PDM_SWAP_WORDS`):** Der I2S-Block sendet pro Frame zwei 16-Bit-Wörter. Eine falsche Einstellung vertauscht nur benachbarte
    16-Bit-Blöcke: der Ton bleibt hörbar, ist aber etwas rauschiger. Beide Einstellungen im Hörtest vergleichen, die
    mit dem sauberen Ton behalten.
 3. **Knacken/Aussetzer:** Log-Zeile `Ring ueber/unter` ansehen. Unterläufe → `KIWI_PDM_BUFFER_MS` erhöhen oder DMA-Puffer
@@ -119,8 +123,7 @@ nc 192.168.1.50 2323       # IP steht im Log ("sta ip: ...")
      Dann bitte zuerst den **Hörtest ohne WLAN** (`KIWI_PDM_SELFTEST`) laufen lassen: Er meldet am Ende entweder
      `I2S-Treiber ok` oder `I2S-Treiber haengt!` mit den Zählern. Bei „haengt“ und **ohne** WLAN liegt es am I2S-Treiber
      des SDK-Stands, bei „ok“ ohne WLAN, aber Hängen **mit** WLAN an der Wechselwirkung mit dem Funkteil.
-   Für Rückfragen bitte SDK-Version (Git-Tag), Board und die komplette Log-Zeile mit den I2S-Zählern angeben.
-
+     
    **Beobachtung am Testgerät (SDK v3.4-115, ESP8266EX, 2 MB Flash):** Der Hörtest *vor* dem WLAN-Start meldete
    „I2S-Treiber haengt“ (24 Aufrufe, 24 Zeitüberschreitungen, 0 Bytes, auch nach Neuinstallation), die Kiwi-Sitzung
    *nach* dem WLAN-Start lief dagegen einwandfrei (5062 Aufrufe, 0 Zeitüberschreitungen, 1,26 MB in 6,5 s ≈ 194 KB/s,
@@ -132,11 +135,6 @@ nc 192.168.1.50 2323       # IP steht im Log ("sta ip: ...")
    **Beachten Sie:** Der Kiwi sieht Clients im selben Heimnetz oft unter **derselben IP** (Router/NAT). Läuft gleichzeitig ein
    anderes Gerät (Browser-Tab, PC-Client, der ESP32), bekommt eines davon `badp=5`. Immer nur **einen** Client gleichzeitig
    betreiben, auch beim Testen.
-   **Beobachtung am Testgerät:** `too_busy=3` kam bei jeder Sitzung nach ca. 10 s (ca. 6,5 s nach dem ersten Audio),
-   obwohl ein anderer Client (ESP32, PC) unmittelbar davor und danach ohne Probleme verbinden konnte. Das spricht gegen
-   eine echte Platzbelegung. Die Ursache ist ungeklärt. Zur Eingrenzung zeigt die Zeile `Sitzung beendet` jetzt
-   `Dauer`, `Frames`, `Keepalives` (gesendet), `Pings` und `verworfene Nachrichten`; mit `KIWI_DEBUG` (menuconfig)
-   wird zusätzlich jede Server-Nachricht und jedes Kommando mit Zeitstempel ausgegeben, auch WebSocket-Close-Gründe.
 
 **Speicherbudget (Schätzung, nicht gemessen):** Client-Struktur ca. 3,5 KB (statisch) + Ringpuffer 8 KB + I2S-DMA (je nach
 SDK 1,5–8 KB) + Task-Stacks ca. 10 KB ⇒ ca. 25 KB von ca. 50 KB freiem Heap.
@@ -297,4 +295,39 @@ Die Partitionstabelle wird mit dem Flashen neu geschrieben; WLAN-/NVS-Daten blei
 und `e2e_dir_test.py` (lokaler HTTP-Mock: Redirect, chunked, Fehlerseiten, Kapazität).
 Beispiel: `./kiwi_dirtool -d kiwidb.bin -f testdata/kiwisdr_sample.js "d update" "d filter Germany" "d list"`.
 
+Live-Verbindungen des Clients zu mehreren echten KiwiSDR-Servern (verschiedene Firmware-Versionen, Standorte, Auslastung) verliefen erfolgreich.
 
+## 9 Zielgruppe und Motivation
+
+Für den PC gibt es bereits genügend Clients für KiwiSDR und WebSDR (Browser,
+`kiwiclient`, diverse Desktop-Programme). Dieses Projekt richtet sich bewusst an
+einen anderen Bereich: **Embedded-Geräte, die ohne Betriebssystem-Ballast einen
+entfernten SDR als „Antenne und Empfänger aus dem Netz“ nutzen sollen.**
+
+Typische Anwendungen:
+
+* **Upcycling und Retrofit** alter Röhren-, Transistor- oder Weltempfänger-Gehäuse,
+  die statt eines eigenen HF-Teils einen entfernten KiwiSDR anzapfen
+  (siehe z. B. das
+  [element14-UpCycleIT-Projekt „Embedded Web-SDR Client on Analog Radio Receiver“](https://community.element14.com/challenges-projects/design-challenges/upcycleit/b/blog/posts/upcycle-it-design-challenge-embedded-web-sdr-client-on-analog-radio-receiver-1-introduction)).
+* **Stromsparende Dauerläufer**, z. B. Küchen-, Werkstatt- oder Nachttisch-Radio,
+  Batterie- oder Solarbetrieb.
+* **Lehr- und Bastelprojekte** rund um Funk, WebSockets und Embedded-Audio mit
+  überschaubarem, gut lesbarem C-Code.
+* **Empfang an Orten ohne eigene gute Antenne** (Mietwohnung, Funkloch-Lagen), mit
+  ausgewähltem Kiwi in einer rauscharmen Gegend.
+
+**Warum kein Raspberry Pi oder Jetson mit Headless-Browser?**
+Der übliche Weg, einen Web-SDR in ein Gerät einzubauen, ist ein Einplatinenrechner
+mit einem (Headless-)Browser. Für die Aufgabe „Audio-Strom empfangen und ausgeben“
+ist das stark überdimensioniert: Linux-Boot, mehrere hundert MB RAM, hoher
+Strombedarf und lange Startzeiten, dazu Wartungsaufwand (Updates, SD-Karten-Verschleiß).
+Ein ESP8266 (oder eine vergleichbare MCU mit WLAN) erledigt dieselbe Aufgabe mit
+wenigen hundert KB RAM, startet in Sekunden und braucht typischerweise nur einen
+Bruchteil der Leistung.
+
+**Abgrenzung – was das Projekt nicht sein will:**
+Kein Ersatz für die komplette Web-Oberfläche (kein Wasserfall, keine DX-Liste,
+keine breitbandige IQ-Auswertung). Es geht um Audio eines einzelnen Kanals.
+
+---
