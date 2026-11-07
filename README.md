@@ -37,7 +37,6 @@ geändert wurde nur, was der ESP8266 zwingend verlangt (siehe Abschnitt 3).
 
 * Tiefpass ca. 5 kHz (3,3 kΩ · 10 nF → f = 1/(2π·R·C) ≈ 4,8 kHz). Er entfernt den Bittakt (1,5 MHz).
 * Der Elko in Reihe entfernt die Gleichspannung (Ruhepegel ist ca. 1,65 V).
-* Ein Pegelsteller (Poti 1–10 kΩ) hinter dem Elko ist sinnvoll. **Nie direkt an Lautsprecher/Kopfhörer.**
 * **GPIO3 ist der serielle Empfangspin.** Ein angeschlossener USB-Seriell-Wandler stört den Ausgang nicht,
   weil man ihn nur zum Lesen der Logs (TX) braucht; beim Flashen den Audioausgang kurz abklemmen.
 * Beim Booten liegen GPIO15 (LOW) und GPIO2 (HIGH) fest; sie werden **nicht** benutzt (I2S-Takt aus).
