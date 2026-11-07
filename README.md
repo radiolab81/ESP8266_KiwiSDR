@@ -29,7 +29,7 @@ geändert wurde nur, was der ESP8266 zwingend verlangt (siehe Abschnitt 3).
 ```
               3,3 kΩ              10 µF
  GPIO3 ───────/\/\/\──────┬───────||───────►  Verstärker / aktiver Lautsprecher
- (RX0, I2S-Daten)         │      (Elko, + zum Verstärker)
+ (RX0, I2S-Daten)         │      (Elko)
                         10 nF
                           │
                          GND
