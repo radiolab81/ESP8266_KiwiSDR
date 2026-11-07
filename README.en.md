@@ -1,3 +1,5 @@
+[Deutsch](README.md) · **English**
+
 # KiwiSDR Client for the **ESP8266** (PDM Output via I2S)
 
 A standalone port of the KiwiSDR client (ESP32 version: https://github.com/radiolab81/ESP32_KiwiSDR) to the ESP8266.
